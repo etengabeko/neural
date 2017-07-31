@@ -23,9 +23,9 @@ int main(int /*argc*/, char* /*argv*/[])
     NeuralNetworkOptions opt;
     opt.setInputNeuronsCount(2);
     opt.setOutputNeuronsCount(1);
-    opt.setHiddenLayersCount(1);
+    opt.setHiddenLayersCount(2);
     opt.setHiddenNeuronsOfLayerCount(2);
-    opt.setHasBiasNeurons(false);
+    opt.setHasBiasNeurons(true);
     opt.setActivationFunctionType(ActivationFunction::Type::sigm);
 
     NeuralNetwork nnet = NeuralNetwork::create(opt);

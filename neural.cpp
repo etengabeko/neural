@@ -296,16 +296,15 @@ NeuralNetwork NeuralNetwork::create(const NeuralNetworkOptions& options)
     {
         output.setActivationFunction(result.m_activation.get());
 
-        Synapse& each = result.m_synapses[processedSynapses];
         for (const Neuron& prev : *previousLayer)
         {
-            output.addDendrite(each.dendrite());
-            each.bind(&prev);
+            Synapse& nextSynapse = result.m_synapses[processedSynapses];
+            output.addDendrite(nextSynapse.dendrite());
+            nextSynapse.bind(&prev);
+
+            ++processedSynapses;
         }
-
         result.m_outputs.push_back(output.axon());
-
-        ++processedSynapses;
     }
 
     result.randomizeWeights();
@@ -328,7 +327,7 @@ uint NeuralNetwork::synapsesCount(const NeuralNetworkOptions& options)
 void NeuralNetwork::randomizeWeights()
 {
     std::default_random_engine generator;
-    std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    std::uniform_real_distribution<double> distribution(-1.0, 1.0);
 
     for (Synapse& each : m_synapses)
     {
