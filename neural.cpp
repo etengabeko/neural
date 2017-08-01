@@ -3,8 +3,17 @@
 #include <cassert>
 #include <cmath>
 
-#include <algorithm>
+#include <functional>
+#include <numeric>
 #include <random>
+
+namespace
+{
+
+template <typename T>
+T sqr(T value) { return (value * value); }
+
+}
 
 namespace anns
 {
@@ -92,7 +101,7 @@ void Synapse::setWeight(double weight)
 Dendrite::Dendrite(Synapse* owner) :
     m_owner(owner)
 {
-    assert(m_owner != nullptr && "Dendrite owner is NULL");
+    assert(m_owner != nullptr && "Dendrite owner is NULL.");
 }
 
 const Synapse* Dendrite::synapse() const
@@ -108,7 +117,7 @@ double Dendrite::value() const
 Axon::Axon(Neuron* owner) :
     m_owner(owner)
 {
-    assert(m_owner != nullptr && "Axon owner is NULL");
+    assert(m_owner != nullptr && "Axon owner is NULL.");
 }
 
 Neuron* Axon::neuron()
@@ -179,7 +188,102 @@ HyperbolicTangent::HyperbolicTangent() :
 
 double HyperbolicTangent::calculate(double value) const
 {
-    return (std::exp(2.0 * value) - 1.0) / (std::exp(2.0 * value) + 1.0);
+    return (std::expm1(2.0 * value) / (std::exp(2.0 * value) + 1.0));
+}
+
+ErrorFunction::ErrorFunction(Type type) :
+    m_type(type)
+{
+
+}
+
+std::unique_ptr<ErrorFunction> ErrorFunction::create(Type type)
+{
+    std::unique_ptr<ErrorFunction> result;
+    switch (type)
+    {
+    case Type::MSE:
+        result.reset(new MseError());
+        break;
+    case Type::RootMSE:
+        result.reset(new RootMseError());
+        break;
+    case Type::Arctan:
+        result.reset(new ArctanError());
+        break;
+    default:
+        assert(false && "Unknown type of Error function.");
+        break;
+    }
+    return result;
+}
+
+ErrorFunction::Type ErrorFunction::type() const
+{
+    return m_type;
+}
+
+double ErrorFunction::operator() (const std::vector<double>& actual,
+                                  const std::vector<double>& expected) const
+{
+    assert(!actual.empty() && "Calculate error function: empty input vectors.");
+    assert(actual.size() == expected.size() && "Caluculate error function: actual values count != expected values count.");
+
+    return calculate(actual, expected);
+}
+
+MseError::MseError() :
+    MseError(Type::MSE)
+{
+
+}
+
+MseError::MseError(Type type) :
+    ErrorFunction(type)
+{
+
+}
+
+double MseError::calculate(const std::vector<double>& actual,
+                           const std::vector<double>& expected) const
+{
+    return std::inner_product(expected.cbegin(),
+                              expected.cend(),
+                              actual.cbegin(),
+                              0.0,
+                              std::plus<double>(),
+                              [](double e, double a) { return ::sqr(e - a); }
+                             ) / static_cast<double>(actual.size());
+}
+
+RootMseError::RootMseError() :
+    MseError(Type::RootMSE)
+{
+
+}
+
+double RootMseError::calculate(const std::vector<double>& actual,
+                               const std::vector<double>& expected) const
+{
+    return std::sqrt(MseError::calculate(actual, expected));
+}
+
+ArctanError::ArctanError() :
+    ErrorFunction(Type::Arctan)
+{
+
+}
+
+double ArctanError::calculate(const std::vector<double>& actual,
+                              const std::vector<double>& expected) const
+{
+    return std::inner_product(expected.cbegin(),
+                              expected.cend(),
+                              actual.cbegin(),
+                              0.0,
+                              std::plus<double>(),
+                              [](double e, double a) { return ::sqr(std::atan(e - a)); }
+                             ) / static_cast<double>(actual.size());
 }
 
 uint NeuralNetworkOptions::inputNeuronsCount() const
@@ -337,7 +441,7 @@ void NeuralNetwork::randomizeWeights()
 
 std::vector<double> NeuralNetwork::training(const std::vector<double>& inputs)
 {
-    assert(inputs.size() == m_inputLayer.size() && "input values count != input layer neurons count");
+    assert(inputs.size() == m_inputLayer.size() && "Input values count != input layer neurons count.");
 
     {
         std::vector<double>::const_iterator it = inputs.cbegin();

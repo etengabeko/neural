@@ -13,6 +13,7 @@ namespace anns
 class ActivationFunction;
 class Axon;
 class Dendrite;
+class ErrorFunction;
 class Neuron;
 class Synapse;
 
@@ -143,6 +144,70 @@ public:
 
 private:
     virtual double calculate(double value) const override;
+
+};
+
+class ErrorFunction
+{
+public:
+    enum class Type
+    {
+        MSE,
+        RootMSE,
+        Arctan
+    };
+
+    explicit ErrorFunction(Type type);
+    virtual ~ErrorFunction() = default;
+
+    static std::unique_ptr<ErrorFunction> create(Type type);
+
+    Type type() const;
+
+    double operator() (const std::vector<double>& actual,
+                       const std::vector<double>& expected) const;
+
+protected:
+    virtual double calculate(const std::vector<double>& actual,
+                             const std::vector<double>& expected) const = 0;
+
+private:
+    const Type m_type;
+
+};
+
+class MseError : public ErrorFunction
+{
+public:
+    MseError();
+
+protected:
+    explicit MseError(Type type);
+
+    virtual double calculate(const std::vector<double>& actual,
+                             const std::vector<double>& expected) const override;
+
+};
+
+class RootMseError final : public MseError
+{
+public:
+    RootMseError();
+
+private:
+    virtual double calculate(const std::vector<double>& actual,
+                             const std::vector<double>& expected) const override;
+
+};
+
+class ArctanError final : public ErrorFunction
+{
+public:
+    ArctanError();
+
+private:
+    virtual double calculate(const std::vector<double>& actual,
+                             const std::vector<double>& expected) const override;
 
 };
 
