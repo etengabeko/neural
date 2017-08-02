@@ -14,6 +14,8 @@ class ActivationFunction;
 class Axon;
 class Dendrite;
 class ErrorFunction;
+class NeuralNetwork;
+class NeuralNetworkOptions;
 class Neuron;
 class Synapse;
 
@@ -24,12 +26,18 @@ public:
     explicit Axon(Neuron* owner);
 
     Neuron* neuron();
+    const Neuron* neuron() const;
+
+    void addSynapse(Synapse* synapse);
+    const std::vector<Synapse*>& synapses() const;
 
     void setValue(double value);
     double value() const;
 
 private:
     Neuron* m_owner = nullptr;
+    std::vector<Synapse*> m_synapses;
+
     double m_value = 0.0;
 
 };
@@ -39,6 +47,7 @@ class Dendrite
 public:
     explicit Dendrite(Synapse* owner);
 
+    Synapse* synapse();
     const Synapse* synapse() const;
 
     double value() const;
@@ -53,20 +62,27 @@ class Synapse
 public:
     Synapse();
 
+    Dendrite* dendrite();
     const Dendrite* dendrite() const;
+
+    Axon* axon();
     const Axon* axon() const;
 
-    void bind(const Neuron* neuron);
-    void setAxon(const Axon* axon);
+    void bind(Neuron* neuron);
+    void setAxon(Axon* axon);
 
     double weight() const;
     void setWeight(double weight);
 
+    double delta() const;
+    void setDelta(double delta);
+
 private:
-    const Dendrite m_dendrite;
-    const Axon* m_axon;
+    Dendrite m_dendrite;
+    Axon* m_axon;
 
     double m_weight = 0.0;
+    double m_delta = 0.0;
 
 };
 
@@ -82,21 +98,24 @@ public:
     };
 
 public:
-    explicit Neuron(Type type);
+    Neuron(Type type, NeuralNetwork* parent);
 
-    void setActivationFunction(ActivationFunction* func);
+    void addDendrite(Dendrite* dendrite);
 
-    void addDendrite(const Dendrite* dendrite);
-
-    const Axon* axon() const;
+    Axon* axon();
 
     void activate();
 
+    void backPropagation(double expected);
+
+private:
+    double inputValue() const;
+
 private:
     Type m_type;
-    ActivationFunction* m_activation = nullptr;
+    NeuralNetwork* m_parent;
 
-    std::vector<const Dendrite*> m_dendrites;
+    std::vector<Dendrite*> m_dendrites;
     Axon m_axon;
 
 };
@@ -118,6 +137,7 @@ public:
     Type type() const;
 
     double operator() (double value) const;
+    virtual double derivative(double value) const = 0;
 
 protected:
     virtual double calculate(double value) const = 0;
@@ -132,6 +152,8 @@ class Sigmoid final : public ActivationFunction
 public:
     Sigmoid();
 
+    virtual double derivative(double value) const override;
+
 private:
     virtual double calculate(double value) const override;
 
@@ -141,6 +163,8 @@ class HyperbolicTangent final : public ActivationFunction
 {
 public:
     HyperbolicTangent();
+
+    virtual double derivative(double value) const override;
 
 private:
     virtual double calculate(double value) const override;
@@ -232,6 +256,15 @@ public:
     ActivationFunction::Type activationFunctionType() const;
     void setActivationFunctionType(ActivationFunction::Type type);
 
+    ErrorFunction::Type errorFunctionType() const;
+    void setErrorFunctionType(ErrorFunction::Type type);
+
+    double learningRate() const;
+    void setLearningRate(double rate);
+
+    double learningMoment() const;
+    void setLearningMoment(double moment);
+
 private:
     uint m_inputNeuronsCount = 0;
     uint m_outputNeuronsCount = 0;
@@ -240,8 +273,10 @@ private:
     bool m_hasBiasNeurons = false;
 
     ActivationFunction::Type m_activationFunctionType = ActivationFunction::Type::sigm;
+    ErrorFunction::Type m_errorFunctionType = ErrorFunction::Type::MSE;
 
-    // TODO
+    double m_learningRate = 0.0;
+    double m_learningMoment = 0.0;
 
 };
 
@@ -256,7 +291,19 @@ public:
 
     static NeuralNetwork create(const NeuralNetworkOptions& options);
 
-    std::vector<double> training(const std::vector<double>& inputs);
+    std::vector<Synapse>* synapses() { return &m_synapses; } // FIXME
+
+    std::vector<double> forwardPass(const std::vector<double>& inputs);
+    void backPropagation(const std::vector<double>& expected);
+
+    double error(const std::vector<double>& actual,
+                 const std::vector<double>& expected) const;
+
+    double learningRate() const;
+    double learningMoment() const;
+
+    const ActivationFunction& activationFunction() const;
+    const ErrorFunction& errorFunction() const;
 
 private:
     static uint synapsesCount(const NeuralNetworkOptions& options);
@@ -265,6 +312,7 @@ private:
 
 private:
     std::unique_ptr<ActivationFunction> m_activation;
+    std::unique_ptr<ErrorFunction> m_error;
 
     std::vector<Neuron> m_inputLayer;
     std::vector<std::vector<Neuron>> m_hiddenLayers;
@@ -274,6 +322,9 @@ private:
 
     std::vector<Axon> m_inputs;
     std::vector<const Axon*> m_outputs;
+
+    double m_learningRate = 0.0;
+    double m_learningMoment = 0.0;
 
 };
 

@@ -18,24 +18,20 @@ T sqr(T value) { return (value * value); }
 namespace anns
 {
 
-Neuron::Neuron(Type type) :
+Neuron::Neuron(Type type, NeuralNetwork* parent) :
     m_type(type),
+    m_parent(parent),
     m_axon(this)
 {
-
+    assert(m_parent != nullptr && "NeuralNetwork of Neuron is NULL.");
 }
 
-void Neuron::setActivationFunction(ActivationFunction* func)
-{
-    m_activation = func;
-}
-
-void Neuron::addDendrite(const Dendrite* dendrite)
+void Neuron::addDendrite(Dendrite* dendrite)
 {
     m_dendrites.push_back(dendrite);
 }
 
-const Axon* Neuron::axon() const
+Axon* Neuron::axon()
 {
     return &m_axon;
 }
@@ -52,13 +48,53 @@ void Neuron::activate()
         break;
     case Type::Output:
     case Type::Hidden:
-        double value = std::accumulate(m_dendrites.cbegin(),
-                                       m_dendrites.cend(),
-                                       0.0,
-                                       [](double sum, const Dendrite* d) { return sum + (d->value() * d->synapse()->weight()); });
-        m_axon.setValue((*m_activation)(value));
+        m_axon.setValue(m_parent->activationFunction()(inputValue()));
         break;
     }
+}
+
+double Neuron::inputValue() const
+{
+    return std::accumulate(m_dendrites.cbegin(),
+                           m_dendrites.cend(),
+                           0.0,
+                           [](double sum, Dendrite* d) { return sum + (d->value() * d->synapse()->weight()); });
+}
+
+void Neuron::backPropagation(double /*expected*/)
+{
+//    double delta = 0.0;
+
+//    switch (m_type)
+//    {
+//    case Type::Output:
+//        double derivative = m_activation->derivative(m_axon.value());
+//        double shift = expected - m_axon.value();
+//        delta = derivative * shift;
+//        break;
+//    case Type::Hidden:
+//        double derivative = m_activation->derivative(m_axon.value());
+//        double shift = std::accumulate(m_axon.synapses().cbegin(),
+//                                       m_axon.synapses().cend(),
+//                                       0.0,
+//                                       [](double sum, const Synapse* s) { return sum + (s->weight() * s->delta()); });
+//        delta = derivative * shift;
+//        for (Synapse* synapse : m_axon.synapses())
+//        {
+//            double grad = m_axon.value() * synapse->delta();
+
+//        }
+
+//        break;
+//    case Type::Input:
+//    case Type::Bias:
+//        return;
+//    }
+
+//    for (Dendrite* dendrite : m_dendrites)
+//    {
+//        dendrite->synapse()->setDelta(*delta);
+//    }
 }
 
 Synapse::Synapse() :
@@ -73,19 +109,30 @@ const Dendrite* Synapse::dendrite() const
     return &m_dendrite;
 }
 
+Dendrite* Synapse::dendrite()
+{
+    return &m_dendrite;
+}
+
+Axon* Synapse::axon()
+{
+    return m_axon;
+}
+
 const Axon* Synapse::axon() const
 {
     return m_axon;
 }
 
-void Synapse::bind(const Neuron* neuron)
+void Synapse::bind(Neuron* neuron)
 {
     setAxon(neuron->axon());
 }
 
-void Synapse::setAxon(const Axon* axon)
+void Synapse::setAxon(Axon* axon)
 {
     m_axon = axon;
+    axon->addSynapse(this);
 }
 
 double Synapse::weight() const
@@ -98,10 +145,25 @@ void Synapse::setWeight(double weight)
     m_weight = weight;
 }
 
+double Synapse::delta() const
+{
+    return m_delta;
+}
+
+void Synapse::setDelta(double delta)
+{
+    m_delta = delta;
+}
+
 Dendrite::Dendrite(Synapse* owner) :
     m_owner(owner)
 {
     assert(m_owner != nullptr && "Dendrite owner is NULL.");
+}
+
+Synapse* Dendrite::synapse()
+{
+    return m_owner;
 }
 
 const Synapse* Dendrite::synapse() const
@@ -123,6 +185,21 @@ Axon::Axon(Neuron* owner) :
 Neuron* Axon::neuron()
 {
     return m_owner;
+}
+
+const Neuron* Axon::neuron() const
+{
+    return m_owner;
+}
+
+void Axon::addSynapse(Synapse* synapse)
+{
+    m_synapses.push_back(synapse);
+}
+
+const std::vector<Synapse*>& Axon::synapses() const
+{
+    return m_synapses;
 }
 
 void Axon::setValue(double value)
@@ -180,6 +257,11 @@ double Sigmoid::calculate(double value) const
     return (1.0 / (1.0 + std::exp(-value)));
 }
 
+double Sigmoid::derivative(double value) const
+{
+    return (1.0 - value) * value;
+}
+
 HyperbolicTangent::HyperbolicTangent() :
     ActivationFunction(Type::tanh)
 {
@@ -189,6 +271,11 @@ HyperbolicTangent::HyperbolicTangent() :
 double HyperbolicTangent::calculate(double value) const
 {
     return (std::expm1(2.0 * value) / (std::exp(2.0 * value) + 1.0));
+}
+
+double HyperbolicTangent::derivative(double value) const
+{
+    return (1.0 - ::sqr(value));
 }
 
 ErrorFunction::ErrorFunction(Type type) :
@@ -346,14 +433,48 @@ void NeuralNetworkOptions::setActivationFunctionType(ActivationFunction::Type ty
     m_activationFunctionType = type;
 }
 
+ErrorFunction::Type NeuralNetworkOptions::errorFunctionType() const
+{
+    return m_errorFunctionType;
+}
+
+void NeuralNetworkOptions::setErrorFunctionType(ErrorFunction::Type type)
+{
+    m_errorFunctionType = type;
+}
+
+double NeuralNetworkOptions::learningRate() const
+{
+    return m_learningRate;
+}
+
+void NeuralNetworkOptions::setLearningRate(double rate)
+{
+    m_learningRate = rate;
+}
+
+double NeuralNetworkOptions::learningMoment() const
+{
+    return m_learningMoment;
+}
+
+void NeuralNetworkOptions::setLearningMoment(double moment)
+{
+    m_learningMoment = moment;
+}
+
 NeuralNetwork NeuralNetwork::create(const NeuralNetworkOptions& options)
 {
     NeuralNetwork result;
     result.m_activation = ActivationFunction::create(options.activationFunctionType());
+    result.m_error = ErrorFunction::create(options.errorFunctionType());
+    result.m_learningRate = options.learningRate();
+    result.m_learningMoment = options.learningMoment();
 
     result.m_synapses.resize(synapsesCount(options));
 
-    result.m_inputLayer.resize(options.inputNeuronsCount(), Neuron(Neuron::Type::Input));
+    result.m_inputLayer.resize(options.inputNeuronsCount(),
+                               Neuron(Neuron::Type::Input, &result));
     result.m_inputs.resize(options.inputNeuronsCount());
     size_t processedSynapses = 0;
     for (Neuron& input : result.m_inputLayer)
@@ -367,16 +488,15 @@ NeuralNetwork NeuralNetwork::create(const NeuralNetworkOptions& options)
     }
 
     result.m_hiddenLayers.resize(options.hiddenLayersCount());
-    const std::vector<Neuron>* previousLayer = &result.m_inputLayer;
+    std::vector<Neuron>* previousLayer = &result.m_inputLayer;
     for (std::vector<Neuron>& nextLayer : result.m_hiddenLayers)
     {
         nextLayer.reserve(options.hiddenNeuronsOfLayerCount() + (options.hasBiasNeurons() ? 1 : 0));
         while (nextLayer.size() < options.hiddenNeuronsOfLayerCount())
         {
-            Neuron hidden(Neuron::Type::Hidden);
-            hidden.setActivationFunction(result.m_activation.get());
+            Neuron hidden(Neuron::Type::Hidden, &result);
 
-            for (const Neuron& prev : *previousLayer)
+            for (Neuron& prev : *previousLayer)
             {
                 Synapse& nextSynapse = result.m_synapses[processedSynapses];
                 hidden.addDendrite(nextSynapse.dendrite());
@@ -388,19 +508,18 @@ NeuralNetwork NeuralNetwork::create(const NeuralNetworkOptions& options)
         }
         if (options.hasBiasNeurons())
         {
-            Neuron bias(Neuron::Type::Bias);
+            Neuron bias(Neuron::Type::Bias, &result);
             nextLayer.push_back(bias);
         }
         previousLayer = &nextLayer;
     }
 
-    result.m_outputLayer.resize(options.outputNeuronsCount(), Neuron(Neuron::Type::Output));
+    result.m_outputLayer.resize(options.outputNeuronsCount(),
+                                Neuron(Neuron::Type::Output, &result));
     result.m_outputs.reserve(options.outputNeuronsCount());
     for (Neuron& output : result.m_outputLayer)
     {
-        output.setActivationFunction(result.m_activation.get());
-
-        for (const Neuron& prev : *previousLayer)
+        for (Neuron& prev : *previousLayer)
         {
             Synapse& nextSynapse = result.m_synapses[processedSynapses];
             output.addDendrite(nextSynapse.dendrite());
@@ -439,7 +558,7 @@ void NeuralNetwork::randomizeWeights()
     }
 }
 
-std::vector<double> NeuralNetwork::training(const std::vector<double>& inputs)
+std::vector<double> NeuralNetwork::forwardPass(const std::vector<double>& inputs)
 {
     assert(inputs.size() == m_inputLayer.size() && "Input values count != input layer neurons count.");
 
@@ -482,6 +601,32 @@ void NeuralNetwork::activate()
     {
         each.activate();
     }
+}
+
+double NeuralNetwork::error(const std::vector<double>& actual,
+                            const std::vector<double>& expected) const
+{
+    return errorFunction()(actual, expected);
+}
+
+double NeuralNetwork::learningRate() const
+{
+    return m_learningRate;
+}
+
+double NeuralNetwork::learningMoment() const
+{
+    return m_learningMoment;
+}
+
+const ActivationFunction& NeuralNetwork::activationFunction() const
+{
+    return *m_activation;
+}
+
+const ErrorFunction& NeuralNetwork::errorFunction() const
+{
+    return *m_error;
 }
 
 } // anns
