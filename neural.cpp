@@ -61,40 +61,58 @@ double Neuron::inputValue() const
                            [](double sum, Dendrite* d) { return sum + (d->value() * d->synapse()->weight()); });
 }
 
-void Neuron::backPropagation(double /*expected*/)
+void Neuron::backPropagation(double expected)
 {
-//    double delta = 0.0;
+    switch (m_type)
+    {
+    case Type::Output:
+        {
+            double neuronDelta =  (m_parent->activationFunction().derivative(m_axon.value()))
+                                * (expected - m_axon.value());
+            for (Dendrite* dendrite : m_dendrites)
+            {
+                dendrite->synapse()->setNeuronDelta(neuronDelta);
+            }
+        }
+        break;
+    default:
+        assert(false && "For another neuron types need use backPropagation(void).");
+        break;
+    }
+}
 
-//    switch (m_type)
-//    {
-//    case Type::Output:
-//        double derivative = m_activation->derivative(m_axon.value());
-//        double shift = expected - m_axon.value();
-//        delta = derivative * shift;
-//        break;
-//    case Type::Hidden:
-//        double derivative = m_activation->derivative(m_axon.value());
-//        double shift = std::accumulate(m_axon.synapses().cbegin(),
-//                                       m_axon.synapses().cend(),
-//                                       0.0,
-//                                       [](double sum, const Synapse* s) { return sum + (s->weight() * s->delta()); });
-//        delta = derivative * shift;
-//        for (Synapse* synapse : m_axon.synapses())
-//        {
-//            double grad = m_axon.value() * synapse->delta();
-
-//        }
-
-//        break;
-//    case Type::Input:
-//    case Type::Bias:
-//        return;
-//    }
-
-//    for (Dendrite* dendrite : m_dendrites)
-//    {
-//        dendrite->synapse()->setDelta(*delta);
-//    }
+void Neuron::backPropagation()
+{
+    switch (m_type)
+    {
+    case Type::Hidden:
+        {
+            double neuronDelta =  (m_parent->activationFunction().derivative(m_axon.value()))
+                                * (std::accumulate(m_axon.synapses().cbegin(),
+                                                   m_axon.synapses().cend(),
+                                                   0.0,
+                                                   [](double sum, const Synapse* ss) { return sum + (ss->weight() * ss->neuronDelta()); })
+                                   );
+            for (Dendrite* dendrite : m_dendrites)
+            {
+                dendrite->synapse()->setNeuronDelta(neuronDelta);
+            }
+        }
+        // NB: break not required here.
+    case Type::Input:
+    case Type::Bias:
+        for (Synapse* synapse : m_axon.synapses())
+        {
+            double gradient = m_axon.value() * synapse->neuronDelta();
+            double weightDelta =  (m_parent->learningRate() * gradient)
+                                + (m_parent->learningMoment() * synapse->previousWeightDelta());
+            synapse->correctWeight(weightDelta);
+        }
+        break;
+    default:
+        assert(false && "For Output neurons need use backPropagation(double).");
+        break;
+    }
 }
 
 Synapse::Synapse() :
@@ -145,14 +163,25 @@ void Synapse::setWeight(double weight)
     m_weight = weight;
 }
 
-double Synapse::delta() const
+double Synapse::neuronDelta() const
 {
-    return m_delta;
+    return m_neuronDelta;
 }
 
-void Synapse::setDelta(double delta)
+void Synapse::setNeuronDelta(double delta)
 {
-    m_delta = delta;
+    m_neuronDelta = delta;
+}
+
+void Synapse::correctWeight(double delta)
+{
+    m_weightDelta = delta;
+    m_weight += m_weightDelta;
+}
+
+double Synapse::previousWeightDelta() const
+{
+    return m_weightDelta;
 }
 
 Dendrite::Dendrite(Synapse* owner) :
@@ -195,6 +224,11 @@ const Neuron* Axon::neuron() const
 void Axon::addSynapse(Synapse* synapse)
 {
     m_synapses.push_back(synapse);
+}
+
+std::vector<Synapse*>& Axon::synapses()
+{
+    return m_synapses;
 }
 
 const std::vector<Synapse*>& Axon::synapses() const
@@ -580,6 +614,33 @@ std::vector<double> NeuralNetwork::forwardPass(const std::vector<double>& inputs
     }
 
     return result;
+}
+
+void NeuralNetwork::backPropagation(const std::vector<double>& expected)
+{
+    assert(!expected.empty() && "Back propagation function: empty expected vector.");
+    assert(expected.size() == m_outputs.size() && "Expected values count != output layer neurons count.");
+
+    std::vector<double>::const_reverse_iterator exp_it = expected.crbegin();
+    std::vector<Neuron>::reverse_iterator it, end;
+
+    for (it = m_outputLayer.rbegin(), end = m_outputLayer.rend(); it != end; ++it)
+    {
+        it->backPropagation(*(exp_it++));
+    }
+
+    for (auto layer_it = m_hiddenLayers.rbegin(), layer_end = m_hiddenLayers.rend(); layer_it != layer_end; ++layer_it)
+    {
+        for (it = layer_it->rbegin(), end = layer_it->rend(); it != end; ++it)
+        {
+            it->backPropagation();
+        }
+    }
+
+    for (it = m_inputLayer.rbegin(), end = m_inputLayer.rend(); it != end; ++it)
+    {
+        it->backPropagation();
+    }
 }
 
 void NeuralNetwork::activate()

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -24,21 +25,14 @@ int main(int /*argc*/, char* /*argv*/[])
     opt.setInputNeuronsCount(2);
     opt.setOutputNeuronsCount(1);
     opt.setHiddenLayersCount(1);
-    opt.setHiddenNeuronsOfLayerCount(2);
-    opt.setHasBiasNeurons(false);
+    opt.setHiddenNeuronsOfLayerCount(4);
+    opt.setHasBiasNeurons(true);
     opt.setActivationFunctionType(ActivationFunction::Type::sigm);
+    opt.setErrorFunctionType(ErrorFunction::Type::MSE);
+    opt.setLearningRate(0.7);
+    opt.setLearningMoment(0.3);
 
     NeuralNetwork nnet = NeuralNetwork::create(opt);
-
-    // FIXME
-    std::vector<Synapse>* ss = nnet.synapses();
-    (*ss)[2].setWeight(0.45);
-    (*ss)[3].setWeight(-0.12);
-    (*ss)[4].setWeight(0.78);
-    (*ss)[5].setWeight(0.13);
-    (*ss)[6].setWeight(1.5);
-    (*ss)[7].setWeight(-2.3);
-    // -----
 
     std::vector<std::pair<std::vector<double>, double>> inputs
     {
@@ -48,15 +42,30 @@ int main(int /*argc*/, char* /*argv*/[])
         { { 1, 1 }, 0.0 }
     };
 
-    for (const std::pair<std::vector<double>, double>& each : inputs)
-    {
-        std::vector<double> outputs = nnet.forwardPass(each.first);
-        double error = nnet.error(outputs, std::vector<double>{ each.second });
+    std::default_random_engine generator;
+    std::uniform_int_distribution<int> distribution(0, 3);
 
-        std::cout << "input set:  [" << print_func(each.first)  << "]\n";
+    double sumError = 0.0;
+    size_t iteraton = 0;
+    do
+    {
+        int randomIndex = distribution(generator);
+        ++iteraton;
+
+        std::vector<double> outputs = nnet.forwardPass(inputs[randomIndex].first);
+        double error = nnet.error(outputs, std::vector<double>{ inputs[randomIndex].second });
+        sumError += error;
+
+        std::cout << "iteration #" << std::to_string(iteraton) << "\n";
+        std::cout << "input set:  [" << print_func(inputs[randomIndex].first)  << "]\n";
         std::cout << "output set: [" << print_func(outputs) << "]\n";
-        std::cout << "error:       " << std::to_string(error) << "\n\n";
+        std::cout << "error:       " << std::to_string(error) << "\n";
+        std::cout << "sum error:   " << std::to_string(sumError/iteraton) << "\n\n";
+//        std::cout << std::to_string(sumError/iteraton) << "\n";
+
+        nnet.backPropagation(std::vector<double>{ inputs[randomIndex].second });
     }
+    while (sumError/iteraton > 0.01);
 
     return 0;
 }

@@ -29,6 +29,8 @@ public:
     const Neuron* neuron() const;
 
     void addSynapse(Synapse* synapse);
+
+    std::vector<Synapse*>& synapses();
     const std::vector<Synapse*>& synapses() const;
 
     void setValue(double value);
@@ -73,16 +75,20 @@ public:
 
     double weight() const;
     void setWeight(double weight);
+    void correctWeight(double delta);
 
-    double delta() const;
-    void setDelta(double delta);
+    double neuronDelta() const;
+    void setNeuronDelta(double delta);
+
+    double previousWeightDelta() const;
 
 private:
     Dendrite m_dendrite;
     Axon* m_axon;
 
     double m_weight = 0.0;
-    double m_delta = 0.0;
+    double m_neuronDelta = 0.0;
+    double m_weightDelta = 0.0;
 
 };
 
@@ -107,6 +113,7 @@ public:
     void activate();
 
     void backPropagation(double expected);
+    void backPropagation();
 
 private:
     double inputValue() const;
@@ -290,8 +297,6 @@ public:
     NeuralNetwork& operator= (NeuralNetwork&& rhs) = default;
 
     static NeuralNetwork create(const NeuralNetworkOptions& options);
-
-    std::vector<Synapse>* synapses() { return &m_synapses; } // FIXME
 
     std::vector<double> forwardPass(const std::vector<double>& inputs);
     void backPropagation(const std::vector<double>& expected);
